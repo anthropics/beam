@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -124,7 +125,18 @@ class PrismRunnerLogFilter(logging.Filter):
         message = record.getMessage().replace(
             '"!ERROR:time.Time year outside of range [0,9999]"', '')
         json_record = json.loads(message)
-        record.levelno = getattr(logging, json_record["level"])
+        level_str = json_record["level"]
+        # Example level with offset: 'ERROR+2'
+        if "+" in level_str or "-" in level_str:
+          match = re.match(r"([A-Z]+)([+-]\d+)", level_str)
+          if match:
+            base, offset = match.groups()
+            base_level = getattr(logging, base, logging.INFO)
+            record.levelno = base_level + int(offset)
+          else:
+            record.levelno = getattr(logging, level_str, logging.INFO)
+        else:
+            record.levelno = getattr(logging, level_str, logging.INFO)
         record.levelname = logging.getLevelName(record.levelno)
         if "source" in json_record:
           record.funcName = json_record["source"]["function"]
