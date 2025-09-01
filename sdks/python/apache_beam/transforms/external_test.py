@@ -349,7 +349,8 @@ class ExternalTransformTest(unittest.TestCase):
     self.assertTrue(pipeline.contains_external_transforms)
 
   def test_external_transform_finder_leaf(self):
-    pipeline = beam.Pipeline()
+    opts = PipelineOptions(['--runner=DirectRunner'])
+    pipeline = beam.Pipeline(options=opts)
     _ = (
         pipeline
         | beam.Create(['a', 'b'])
