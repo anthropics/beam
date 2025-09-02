@@ -54,7 +54,7 @@ env:
   HADOOP_DOWNLOAD_URL: https://repo.maven.apache.org/maven2/org/apache/flink/flink-shaded-hadoop-2-uber/2.8.3-10.0/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar
   FLINK_TASKMANAGER_SLOTS: 1
   DETACHED_MODE: true
-  HARNESS_IMAGES_TO_PULL: gcr.io/apache-beam-testing/beam-sdk/beam_go_sdk:latest
+  HARNESS_IMAGES_TO_PULL: gcr.io/apache-beam-testing/beam-sdk/beam_python3.9_sdk:latest
   JOB_SERVER_IMAGE: gcr.io/apache-beam-testing/beam_portability/beam_flink1.17_job_server:latest
   ARTIFACTS_DIR: gs://beam-flink-cluster/beam-loadtests-python-cogbk-flink-batch-${{ github.run_id }}
 
