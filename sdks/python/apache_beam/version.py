@@ -17,4 +17,4 @@
 
 """Apache Beam SDK version information and utilities."""
 
-__version__ = "2.67.0.post3"
+__version__ = "2.67.0.post4"
